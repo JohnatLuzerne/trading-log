@@ -1,0 +1,2 @@
+# trading-log
+Trading Log 
