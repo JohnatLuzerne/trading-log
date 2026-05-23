@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Log</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a2e;
+            color: #eaeaea;
+            padding: 20px;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #00d4ff;
+            text-align: center;
+            letter-spacing: 2px;
+        }
+        h2 {
+            color: #00d4ff;
+            margin-top: 40px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th {
+            background-color: #16213e;
+            color: #00d4ff;
+            padding: 10px;
+            text-align: left;
+        }
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #333;
+        }
+        tr:hover {
+            background-color: #16213e;
+        }
+        .positive { color: #00ff88; }
+        .negative { color: #ff4444; }
+        .timestamp {
+            text-align: center;
+            color: #888;
+            font-size: 0.85em;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>📈 Trading Log</h1>
+    <p class="timestamp" id="timestamp"></p>
+
+    <h2>Current Positions</h2>
+    <table id="positions-table">
+        <thead>
+            <tr>
+                <th>Ticker</th>
+                <th>Shares</th>
+                <th>Avg Buy Price</th>
+                <th>Current Price</th>
+                <th>Total Value</th>
+                <th>Unrealized P&L</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+        <tbody id="positions-body"></tbody>
+    </table>
+
+    <h2>Trade History</h2>
+    <table id="trades-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Ticker</th>
+                <th>Direction</th>
+                <th>Action</th>
+                <th>Shares</th>
+                <th>Price</th>
+                <th>Total</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+        <tbody id="trades-body"></tbody>
+    </table>
+
+    <script>
+        const POSITIONS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTnIebpww95TuPIe3Ps1FUZNwVXY2ThFqBNTeKtH5WpINC1uCSF6Lfu4taQ3Jsz3QKSwQ_ylS1-ZJk5/pub?gid=1443562039&single=true&output=csv";
+        const TRADES_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTnIebpww95TuPIe3Ps1FUZNwVXY2ThFqBNTeKtH5WpINC1uCSF6Lfu4taQ3Jsz3QKSwQ_ylS1-ZJk5/pub?gid=0&single=true&output=csv";
+
+        function parseCSV(text) {
+            const lines = text.trim().split("\n");
+            const headers = lines[0].split(",");
+            return lines.slice(1).map(line => {
+                const values = line.match(/(".*?"|[^,]+|(?<=,)(?=,)|^(?=,)|(?<=,)$)/g) || [];
+                const obj = {};
+                headers.forEach((h, i) => {
+                    obj[h.trim()] = (values[i] || "").replace(/^"|"$/g, "").trim();
+                });
+                return obj;
+            }).filter(row => Object.values(row).some(v => v !== ""));
+        }
+
+        function colorize(value) {
+            const num = parseFloat(value);
+            if (num > 0) return `<span class="positive">+$${num.toFixed(2)}</span>`;
+            if (num < 0) return `<span class="negative">-$${Math.abs(num).toFixed(2)}</span>`;
+            return `$${num.toFixed(2)}`;
+        }
+
+        async function loadPositions() {
+            const res = await fetch(POSITIONS_URL);
+            const text = await res.text();
+            const rows = parseCSV(text);
+            const tbody = document.getElementById("positions-body");
+            rows.forEach(row => {
+                const tr = document.createElement("tr");
+                const pnl = parseFloat(row["Unrealized P & L"] || row["Unrealized P&L"] || 0);
+                tr.innerHTML = `
+                    <td><strong>${row["Ticker"]}</strong></td>
+                    <td>${row["Shares held"]}</td>
+                    <td>$${parseFloat(row["Ave Buy Price"]).toFixed(2)}</td>
+                    <td>$${parseFloat(row["Current Price"]).toFixed(2)}</td>
+                    <td>$${parseFloat(row["Total Price"]).toFixed(2)}</td>
+                    <td>${colorize(pnl)}</td>
+                    <td>${row["Notes"] || ""}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function loadTrades() {
+            const res = await fetch(TRADES_URL);
+            const text = await res.text();
+            const rows = parseCSV(text);
+            const tbody = document.getElementById("trades-body");
+            rows.forEach(row => {
+                const tr = document.createElement("tr");
+                const action = row["Action"] || "";
+                tr.innerHTML = `
+                    <td>${row["Date"]}</td>
+                    <td><strong>${row["Ticker"]}</strong></td>
+                    <td>${row["Direction"]}</td>
+                    <td style="color:${action === 'Buy' ? '#00ff88' : '#ff4444'}">${action}</td>
+                    <td>${row["Shares"]}</td>
+                    <td>$${parseFloat(row["Price"]).toFixed(2)}</td>
+                    <td>$${parseFloat(row["Total"]).toFixed(2)}</td>
+                    <td>${row["Notes"] || ""}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        document.getElementById("timestamp").textContent = "Last loaded: " + new Date().toLocaleString();
+        loadPositions();
+        loadTrades();
+    </script>
+</body>
+</html>
