@@ -131,10 +131,14 @@
                 tbody.appendChild(tr);
                 totalPnl += pnl;
             });
-            const pnlEl = document.getElementById("total-pnl");
-            const sign = totalPnl >= 0 ? "+" : "";
-            pnlEl.textContent = "Total P&L: " + sign + "$" + totalPnl.toFixed(2);
-            pnlEl.style.color = totalPnl >= 0 ? "#00ff88" : "#ff4444";
+           const totalCost = rows.reduce((sum, row) => {
+                   return sum + (parseFloat(row["Ave Buy Price"]) * parseFloat(row["Shares held"]));
+           }, 0);
+        const pctPnl = (totalPnl / totalCost) * 100;
+        const pnlEl = document.getElementById("total-pnl");
+        const sign = totalPnl >= 0 ? "+" : "";
+        pnlEl.textContent = "Total P&L: " + sign + "$" + totalPnl.toFixed(2) + " (" + sign + pctPnl.toFixed(2) + "%)";
+        pnlEl.style.color = totalPnl >= 0 ? "#00ff88" : "#ff4444";
         }
 
        async function loadTrades() {
