@@ -52,8 +52,8 @@
 </head>
 <body>
     <h1>📈 Trading Log</h1>
-    <p class="timestamp" id="timestamp"></p>
-
+   <div id="total-pnl" style="text-align:center; font-size:2em; font-weight:bold; margin: 20px 0; padding: 15px; background-color:#16213e; border-radius:8px;"></div>
+   <p class="timestamp" id="timestamp"></p>
     <h2>Current Positions</h2>
     <table id="positions-table">
         <thead>
@@ -115,6 +115,7 @@
             const text = await res.text();
             const rows = parseCSV(text);
             const tbody = document.getElementById("positions-body");
+            let totalPnl = 0;
             rows.forEach(row => {
                 const tr = document.createElement("tr");
                 const pnl = parseFloat(row["Unrealized P & L"] || row["Unrealized P&L"] || 0);
@@ -128,7 +129,12 @@
                     <td>${row["Notes"] || ""}</td>
                 `;
                 tbody.appendChild(tr);
+                totalPnl += pnl;
             });
+            const pnlEl = document.getElementById("total-pnl");
+            const sign = totalPnl >= 0 ? "+" : "";
+            pnlEl.textContent = "Total P&L: " + sign + "$" + totalPnl.toFixed(2);
+            pnlEl.style.color = totalPnl >= 0 ? "#00ff88" : "#ff4444";
         }
 
        async function loadTrades() {
