@@ -70,8 +70,7 @@
         <tbody id="positions-body"></tbody>
     </table>
 
-    <h2>Trade History</h2>
-    <table id="trades-table">
+    <h2>Trade History <span style="font-size:0.6em; font-weight:normal;"><a href="https://docs.google.com/spreadsheets/d/e/2PACX-1vTnIebpww95TuPIe3Ps1FUZNwVXY2ThFqBNTeKtH5WpINC1uCSF6Lfu4taQ3Jsz3QKSwQ_ylS1-ZJk5/pubhtml" target="_blank" style="color:#888;">View full history ↗</a></span></h2>    <table id="trades-table">
         <thead>
             <tr>
                 <th>Date</th>
@@ -132,15 +131,16 @@
             });
         }
 
-        async function loadTrades() {
-            const res = await fetch(TRADES_URL);
-            const text = await res.text();
-            const rows = parseCSV(text);
-            const tbody = document.getElementById("trades-body");
-            rows.forEach(row => {
-                const tr = document.createElement("tr");
-                const action = row["Action"] || "";
-                tr.innerHTML = `
+       async function loadTrades() {
+                const res = await fetch(TRADES_URL);
+                const text = await res.text();
+                const rows = parseCSV(text);
+                const recent = rows.slice(-10).reverse();
+                const tbody = document.getElementById("trades-body");
+                recent.forEach(row => {                
+                    const tr = document.createElement("tr");
+                    const action = row["Action"] || "";
+                    tr.innerHTML = `
                     <td>${row["Date"]}</td>
                     <td><strong>${row["Ticker"]}</strong></td>
                     <td>${row["Direction"]}</td>
