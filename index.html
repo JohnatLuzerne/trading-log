@@ -10,17 +10,33 @@
             background-color: #1a1a2e;
             color: #eaeaea;
             padding: 20px;
-            max-width: 1100px;
+            max-width: 1200px;
             margin: 0 auto;
         }
         h1 {
             color: #00d4ff;
             text-align: center;
             letter-spacing: 2px;
+            margin-bottom: 5px;
         }
         h2 {
             color: #00d4ff;
             margin-top: 40px;
+        }
+        #total-pnl {
+            text-align: center;
+            font-size: 2em;
+            font-weight: bold;
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #16213e;
+            border-radius: 8px;
+        }
+        .timestamp {
+            text-align: center;
+            color: #888;
+            font-size: 0.85em;
+            margin-bottom: 30px;
         }
         table {
             width: 100%;
@@ -42,20 +58,17 @@
         }
         .positive { color: #00ff88; }
         .negative { color: #ff4444; }
-        .timestamp {
-            text-align: center;
-            color: #888;
-            font-size: 0.85em;
-            margin-top: 10px;
-        }
+        .neutral { color: #eaeaea; }
+        a { color: #888; font-size: 0.6em; font-weight: normal; }
     </style>
 </head>
 <body>
     <h1>📈 Trading Log</h1>
-   <div id="total-pnl" style="text-align:center; font-size:2em; font-weight:bold; margin: 20px 0; padding: 15px; background-color:#16213e; border-radius:8px;"></div>
-   <p class="timestamp" id="timestamp"></p>
+    <div id="total-pnl">Loading...</div>
+    <p class="timestamp" id="timestamp"></p>
+
     <h2>Current Positions</h2>
-    <table id="positions-table">
+    <table>
         <thead>
             <tr>
                 <th>Ticker</th>
@@ -64,13 +77,16 @@
                 <th>Current Price</th>
                 <th>Total Value</th>
                 <th>Unrealized P&L</th>
+                <th>% Since Entry</th>
+                <th>Days Held</th>
                 <th>Notes</th>
             </tr>
         </thead>
         <tbody id="positions-body"></tbody>
     </table>
 
-    <h2>Trade History <span style="font-size:0.6em; font-weight:normal;"><a href="https://docs.google.com/spreadsheets/d/e/2PACX-1vTnIebpww95TuPIe3Ps1FUZNwVXY2ThFqBNTeKtH5WpINC1uCSF6Lfu4taQ3Jsz3QKSwQ_ylS1-ZJk5/pubhtml" target="_blank" style="color:#888;">View full history ↗</a></span></h2>    <table id="trades-table">
+    <h2>Trade History <a href="https://docs.google.com/spreadsheets/d/e/2PACX-1vTnIebpww95TuPIe3Ps1FUZNwVXY2ThFqBNTeKtH5WpINC1uCSF6Lfu4taQ3Jsz3QKSwQ_ylS1-ZJk5/pubhtml" target="_blank">View full history ↗</a></h2>
+    <table>
         <thead>
             <tr>
                 <th>Date</th>
@@ -92,65 +108,128 @@
 
         function parseCSV(text) {
             const lines = text.trim().split("\n");
-            const headers = lines[0].split(",");
+            const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
             return lines.slice(1).map(line => {
-                const values = line.match(/(".*?"|[^,]+|(?<=,)(?=,)|^(?=,)|(?<=,)$)/g) || [];
+                const values = [];
+                let current = "";
+                let inQuotes = false;
+                for (let i = 0; i < line.length; i++) {
+                    if (line[i] === '"') {
+                        inQuotes = !inQuotes;
+                    } else if (line[i] === ',' && !inQuotes) {
+                        values.push(current.trim());
+                        current = "";
+                    } else {
+                        current += line[i];
+                    }
+                }
+                values.push(current.trim());
                 const obj = {};
-                headers.forEach((h, i) => {
-                    obj[h.trim()] = (values[i] || "").replace(/^"|"$/g, "").trim();
-                });
+                headers.forEach((h, i) => obj[h] = (values[i] || "").trim());
                 return obj;
             }).filter(row => Object.values(row).some(v => v !== ""));
         }
 
-        function colorize(value) {
+        function colorize(value, prefix = "$") {
             const num = parseFloat(value);
-            if (num > 0) return `<span class="positive">+$${num.toFixed(2)}</span>`;
-            if (num < 0) return `<span class="negative">-$${Math.abs(num).toFixed(2)}</span>`;
-            return `$${num.toFixed(2)}`;
+            if (isNaN(num)) return "-";
+            const sign = num >= 0 ? "+" : "";
+            const cls = num > 0 ? "positive" : num < 0 ? "negative" : "neutral";
+            return `<span class="${cls}">${sign}${prefix}${Math.abs(num).toFixed(2)}</span>`;
         }
 
-        async function loadPositions() {
-            const res = await fetch(POSITIONS_URL);
-            const text = await res.text();
-            const rows = parseCSV(text);
+        function colorizePercent(value) {
+            const num = parseFloat(value);
+            if (isNaN(num)) return "-";
+            const sign = num >= 0 ? "+" : "";
+            const cls = num > 0 ? "positive" : num < 0 ? "negative" : "neutral";
+            return `<span class="${cls}">${sign}${num.toFixed(2)}%</span>`;
+        }
+
+        function daysSince(dateStr) {
+            if (!dateStr) return "-";
+            const parts = dateStr.split("/");
+            if (parts.length !== 3) return "-";
+            const month = parseInt(parts[0]);
+            const day = parseInt(parts[1]);
+            let year = parseInt(parts[2]);
+            if (year < 100) year += 2000;
+            const past = new Date(year, month - 1, day);
+            const now = new Date();
+            const diff = Math.floor((now - past) / (1000 * 60 * 60 * 24));
+            return diff;
+        }
+
+        async function loadData() {
+            const [posRes, tradesRes] = await Promise.all([
+                fetch(POSITIONS_URL),
+                fetch(TRADES_URL)
+            ]);
+            const posText = await posRes.text();
+            const tradesText = await tradesRes.text();
+
+            const positions = parseCSV(posText);
+            const trades = parseCSV(tradesText);
+
+            // Build a map of most recent buy date per ticker
+            const lastBuyDate = {};
+            trades.forEach(t => {
+                if (t["Action"] === "Buy") {
+                    const ticker = t["Ticker"];
+                    if (!lastBuyDate[ticker] || daysSince(t["Date"]) < daysSince(lastBuyDate[ticker])) {
+                        lastBuyDate[ticker] = t["Date"];
+                    }
+                }
+            });
+
+            // Render positions
             const tbody = document.getElementById("positions-body");
             let totalPnl = 0;
-            rows.forEach(row => {
-                const tr = document.createElement("tr");
+            let totalCost = 0;
+
+            positions.forEach(row => {
+                const ticker = row["Ticker"];
+                const shares = parseFloat(row["Shares held"]);
+                const avgBuy = parseFloat(row["Ave Buy Price"]);
+                const currentPrice = parseFloat(row["Current Price"]);
+                const totalValue = parseFloat(row["Total Price"]);
                 const pnl = parseFloat(row["Unrealized P & L"] || row["Unrealized P&L"] || 0);
+                const pctSinceEntry = ((currentPrice - avgBuy) / avgBuy) * 100;
+                const days = lastBuyDate[ticker] ? daysSince(lastBuyDate[ticker]) : "-";
+                const cost = avgBuy * shares;
+
+                totalPnl += isNaN(pnl) ? 0 : pnl;
+                totalCost += isNaN(cost) ? 0 : cost;
+
+                const tr = document.createElement("tr");
                 tr.innerHTML = `
-                    <td><strong>${row["Ticker"]}</strong></td>
-                    <td>${row["Shares held"]}</td>
-                    <td>$${parseFloat(row["Ave Buy Price"]).toFixed(2)}</td>
-                    <td>$${parseFloat(row["Current Price"]).toFixed(2)}</td>
-                    <td>$${parseFloat(row["Total Price"]).toFixed(2)}</td>
-                    <td>${colorize(pnl)}</td>
+                    <td><strong>${ticker}</strong></td>
+                    <td>${shares}</td>
+                    <td>$${avgBuy.toFixed(2)}</td>
+                    <td>$${currentPrice.toFixed(2)}</td>
+                    <td>$${totalValue.toFixed(2)}</td>
+                    <td>${colorize(pnl, "$")}</td>
+                    <td>${colorizePercent(pctSinceEntry)}</td>
+                    <td>${days} days</td>
                     <td>${row["Notes"] || ""}</td>
                 `;
                 tbody.appendChild(tr);
-                totalPnl += pnl;
             });
-           const totalCost = rows.reduce((sum, row) => {
-                   return sum + (parseFloat(row["Ave Buy Price"]) * parseFloat(row["Shares held"]));
-           }, 0);
-        const pctPnl = (totalPnl / totalCost) * 100;
-        const pnlEl = document.getElementById("total-pnl");
-        const sign = totalPnl >= 0 ? "+" : "";
-        pnlEl.textContent = "Total P&L: " + sign + "$" + totalPnl.toFixed(2) + " (" + sign + pctPnl.toFixed(2) + "%)";
-        pnlEl.style.color = totalPnl >= 0 ? "#00ff88" : "#ff4444";
-        }
 
-       async function loadTrades() {
-                const res = await fetch(TRADES_URL);
-                const text = await res.text();
-                const rows = parseCSV(text);
-                const recent = rows.slice(-10).reverse();
-                const tbody = document.getElementById("trades-body");
-                recent.forEach(row => {                
-                    const tr = document.createElement("tr");
-                    const action = row["Action"] || "";
-                    tr.innerHTML = `
+            // Total P&L display
+            const pctTotal = (totalPnl / totalCost) * 100;
+            const pnlEl = document.getElementById("total-pnl");
+            const sign = totalPnl >= 0 ? "+" : "";
+            pnlEl.textContent = `Total P&L: ${sign}$${totalPnl.toFixed(2)} (${sign}${pctTotal.toFixed(2)}%)`;
+            pnlEl.style.color = totalPnl >= 0 ? "#00ff88" : "#ff4444";
+
+            // Render trades (most recent 10)
+            const recentTrades = trades.slice(-10).reverse();
+            const tradesTbody = document.getElementById("trades-body");
+            recentTrades.forEach(row => {
+                const action = row["Action"] || "";
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
                     <td>${row["Date"]}</td>
                     <td><strong>${row["Ticker"]}</strong></td>
                     <td>${row["Direction"]}</td>
@@ -160,13 +239,13 @@
                     <td>$${parseFloat(row["Total"]).toFixed(2)}</td>
                     <td>${row["Notes"] || ""}</td>
                 `;
-                tbody.appendChild(tr);
+                tradesTbody.appendChild(tr);
             });
+
+            document.getElementById("timestamp").textContent = "Last loaded: " + new Date().toLocaleString();
         }
 
-        document.getElementById("timestamp").textContent = "Last loaded: " + new Date().toLocaleString();
-        loadPositions();
-        loadTrades();
+        loadData();
     </script>
 </body>
 </html>
